@@ -1,0 +1,31 @@
+nohup: ignoring input
+/home/zeus/miniconda3/envs/cloudspace/lib/python3.12/site-packages/torch/amp/autocast_mode.py:270: UserWarning: User provided device_type of 'cuda', but CUDA is not available. Disabling
+  warnings.warn(
+Using device: cpu
+Evaluating on all 5451 samples.
+
+--- Evaluating LoRA SAM3 Model ---
+Traceback (most recent call last):
+  File "/teamspace/studios/this_studio/SAM3_Testing/evaluate_miou.py", line 253, in <module>
+    main()
+  File "/teamspace/studios/this_studio/SAM3_Testing/evaluate_miou.py", line 207, in main
+    model_lora = build_model(with_lora=True)
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/teamspace/studios/this_studio/SAM3_Testing/evaluate_miou.py", line 96, in build_model
+    model = build_sam3_image_model(
+            ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/teamspace/studios/this_studio/SAM3_Project/SAM3_LoRA/sam3/model_builder.py", line 588, in build_sam3_image_model
+    vision_encoder = _create_vision_backbone(
+                     ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/teamspace/studios/this_studio/SAM3_Project/SAM3_LoRA/sam3/model_builder.py", line 503, in _create_vision_backbone
+    position_encoding = _create_position_encoding(precompute_resolution=1008)
+                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/teamspace/studios/this_studio/SAM3_Project/SAM3_LoRA/sam3/model_builder.py", line 60, in _create_position_encoding
+    return PositionEmbeddingSine(
+           ^^^^^^^^^^^^^^^^^^^^^^
+  File "/teamspace/studios/this_studio/SAM3_Project/SAM3_LoRA/sam3/model/position_encoding.py", line 47, in __init__
+    tensors = torch.zeros((1, 1) + size, device="cuda")
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/zeus/miniconda3/envs/cloudspace/lib/python3.12/site-packages/torch/cuda/__init__.py", line 410, in _lazy_init
+    torch._C._cuda_init()
+RuntimeError: Found no NVIDIA driver on your system. Please check that you have an NVIDIA GPU and installed a driver from http://www.nvidia.com/Download/index.aspx
