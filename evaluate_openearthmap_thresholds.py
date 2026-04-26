@@ -3,11 +3,9 @@ import sys
 import torch
 import numpy as np
 from PIL import Image
-import matplotlib.pyplot as plt
 from tqdm import tqdm
 import json
 import glob
-import re
 
 # Add SAM3 and SAM3_LoRA to path
 project_root = "/workspace"
@@ -21,8 +19,8 @@ from lora_layers import LoRAConfig, apply_lora_to_model
 # Paths
 IMAGE_DIR = "/workspace/Small_OpenEarthMap_Test/images"
 LABEL_DIR = "/workspace/Small_OpenEarthMap_Test/labels"
-OUTPUT_JSON = "/workspace/SAM3_Testing/openearthmap_epoch_results_full.json"
-WEIGHTS_DIR = "/workspace/SAM3_train_lora/SAM3_LoRA/outputs/open_earth_map_full_lora"
+OUTPUT_JSON = "/workspace/SAM3_Testing/openearthmap_threshold_results_epoch9.json"
+WEIGHT_PATH = "/workspace/SAM3_train_lora/SAM3_LoRA/outputs/open_earth_map_full_lora/lora_weights_epoch_9.pt"
 
 COLOR_MAP = {
     "Bareland": [128, 0, 0],
@@ -53,7 +51,7 @@ def build_base_model():
     return model
 
 def build_model_with_lora():
-    """Initializes the base SAM3 model and applies LoRA architecture (weights not loaded yet)."""
+    """Initializes the base SAM3 model and applies LoRA architecture."""
     model = build_base_model()
     
     # Matching light config
@@ -116,7 +114,6 @@ def run_inference(processor, device="cuda", limit=None):
         for label, color in COLOR_MAP.items():
             color_array = np.array(color)
             # Create binary mask for this specific color
-            # match shape (H, W, 3) with (3,)
             match = np.all(label_rgb == color_array, axis=-1)
             
             if not np.any(match):
@@ -156,89 +153,45 @@ def main():
 
     limit_samples = None
     print(f"Limiting to {limit_samples} samples per model.")
-
-    # 1. Base Model
-    # print("\nEvaluating Base Model...")
-    # base_model = build_base_model().to(device)
-    # processor = Sam3Processor(base_model, device=device, confidence_threshold=0.5)
     
-    
-    
-    # with torch.no_grad():
-    #     label_mious, overall_miou = run_inference(processor, device, limit=limit_samples)
-        
-    # print(f"Base Model Overall mIoU: {overall_miou:.4f}")
-    # for label, miou in label_mious.items():
-    #     print(f"  {label}: {miou:.4f}")
-        
-    # results["base"] = {
-    #     "overall": overall_miou,
-    #     "labels": label_mious
-    # }
-    
-    # # Free base model
-    # del base_model
-    # del processor
-    # torch.cuda.empty_cache()
-    
-    # 2. LoRA Models
-    start_epoch = 11
-    print("\nEvaluating LoRA Epochs...")
+    print("\nLoading LoRA Model...")
     lora_model = build_model_with_lora()
-    processor = Sam3Processor(lora_model, device=device, confidence_threshold=0.4)
     
-    # FIX: Helper function to extract integer epoch for proper numerical sorting
-    def get_epoch_num(filepath):
-        match = re.search(r"lora_weights_epoch_(\d+)\.pt", os.path.basename(filepath))
-        return int(match.group(1)) if match else -1
-
-    # Fetch and sort numerically
-    epoch_weights = sorted(
-        glob.glob(os.path.join(WEIGHTS_DIR, "lora_weights_epoch_*.pt")), 
-        key=get_epoch_num
-    )
+    try:
+        load_epoch_weights(lora_model, WEIGHT_PATH)
+    except Exception as e:
+        print(f"Failed to load weights from {WEIGHT_PATH}: {str(e)}")
+        return
     
-    for weight_path in epoch_weights:
-        epoch = get_epoch_num(weight_path)
+    thresholds = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]
+    
+    for threshold in thresholds:
+        print(f"\nEvaluating with confidence_threshold = {threshold}")
+        # Initialize processor with specific threshold
+        processor = Sam3Processor(lora_model, device=device, confidence_threshold=threshold)
         
-        # NEW: Skip if the epoch is lower than our designated start_epoch
-        if epoch < start_epoch:
-            continue
-            
         try:
-            load_epoch_weights(lora_model, weight_path)
-            
             with torch.no_grad():
                 label_mious, overall_miou = run_inference(processor, device, limit=limit_samples)
             
-            print(f"Epoch {epoch} Overall mIoU: {overall_miou:.4f}")
+            print(f"Threshold {threshold} Overall mIoU: {overall_miou:.4f}")
             for label, miou in label_mious.items():
                 print(f"  {label}: {miou:.4f}")
                 
-            results[f"epoch_{epoch}"] = {
+            results[f"threshold_{threshold}"] = {
                 "overall": overall_miou,
                 "labels": label_mious
             }
             
         except Exception as e:
-            print(f"Failed to evaluate epoch {epoch}: {str(e)}")
-            results[f"epoch_{epoch}"] = None
-    
-    # Save results
-    os.makedirs(os.path.dirname(OUTPUT_JSON), exist_ok=True)
-    
-    # Update JSON incrementally or merge if file already exists so you don't lose previous data
-    if os.path.exists(OUTPUT_JSON):
-        with open(OUTPUT_JSON, "r") as f:
-            try:
-                existing_results = json.load(f)
-                existing_results.update(results)
-                results = existing_results
-            except json.JSONDecodeError:
-                pass # Overwrite if the file is corrupted
-                
-    with open(OUTPUT_JSON, "w") as f:
-        json.dump(results, f, indent=4)
+            print(f"Failed to evaluate threshold {threshold}: {str(e)}")
+            results[f"threshold_{threshold}"] = None
+            
+        # Optional: Save results progressively inside the loop so we don't lose data if it crashes
+        os.makedirs(os.path.dirname(OUTPUT_JSON), exist_ok=True)
+        with open(OUTPUT_JSON, "w") as f:
+            json.dump(results, f, indent=4)
+            
     print(f"\nResults saved to {OUTPUT_JSON}")
 
 if __name__ == "__main__":

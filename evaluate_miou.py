@@ -153,70 +153,74 @@ def main():
     print(f"Evaluating on all {len(data)} samples.")
     
     # 1. Evaluate Base Model
-    print("\n--- Evaluating Base SAM3 Model ---")
-    model_base = build_model(with_lora=False)
-    processor = Sam3Processor(model_base, device=device, confidence_threshold=0.5)
+    # print("\n--- Evaluating Base SAM3 Model ---")
+    # model_base = build_model(with_lora=False)
+    # processor = Sam3Processor(model_base, device=device, confidence_threshold=0.5)
     
-    ious_base = []
-    base_prompt_ious = {p: [] for p in PROMPT_TO_FOLDER.keys()}
+    # ious_base = []
+    # base_prompt_ious = {p: [] for p in PROMPT_TO_FOLDER.keys()}
     
-    for i, item in enumerate(tqdm(data)):
-        # Normalize path for cross-platform matching
-        image_rel_path = item['post_image_path'].replace('\\', '/')
-        image_path = os.path.join(DATASET_ROOT, image_rel_path)
+    # for i, item in enumerate(tqdm(data)):
+    #     # Normalize path for cross-platform matching
+    #     image_rel_path = item['post_image_path'].replace('\\', '/')
+    #     image_path = os.path.join(DATASET_ROOT, image_rel_path)
         
-        if not os.path.exists(image_path):
-            continue
+    #     if not os.path.exists(image_path):
+    #         continue
             
-        text_prompt = determine_prompt(item['cls_description'])
-        gt_mask = get_ground_truth_mask(image_rel_path, text_prompt)
+    #     text_prompt = determine_prompt(item['cls_description'])
+    #     gt_mask = get_ground_truth_mask(image_rel_path, text_prompt)
         
-        if gt_mask is None:
-            continue
+    #     if gt_mask is None:
+    #         continue
             
-        # Run inference
-        image = Image.open(image_path).convert("RGB")
-        state = processor.set_image(image)
-        state = processor.set_text_prompt(state=state, prompt=text_prompt)
+    #     # Run inference
+    #     image = Image.open(image_path).convert("RGB")
+    #     state = processor.set_image(image)
+    #     state = processor.set_text_prompt(state=state, prompt=text_prompt)
         
-        if state["masks"].shape[0] > 0:
-            # Combine all instance masks into one binary mask
-            pred_mask_tensor = state["masks"].squeeze(1).sum(dim=0) > 0
-            pred_mask = pred_mask_tensor.cpu().numpy()
+    #     if state["masks"].shape[0] > 0:
+    #         # Combine all instance masks into one binary mask
+    #         pred_mask_tensor = state["masks"].squeeze(1).sum(dim=0) > 0
+    #         pred_mask = pred_mask_tensor.cpu().numpy()
             
-            # The prediction might need resizing
-            if pred_mask.shape != gt_mask.shape:
-                pred_img = Image.fromarray(pred_mask.astype(np.uint8) * 255)
-                pred_img = pred_img.resize((gt_mask.shape[1], gt_mask.shape[0]), Image.NEAREST)
-                pred_mask = np.array(pred_img) > 128
-        else:
-            pred_mask = np.zeros_like(gt_mask, dtype=bool)
+    #         # The prediction might need resizing
+    #         if pred_mask.shape != gt_mask.shape:
+    #             pred_img = Image.fromarray(pred_mask.astype(np.uint8) * 255)
+    #             pred_img = pred_img.resize((gt_mask.shape[1], gt_mask.shape[0]), Image.NEAREST)
+    #             pred_mask = np.array(pred_img) > 128
+    #     else:
+    #         pred_mask = np.zeros_like(gt_mask, dtype=bool)
                 
-        iou = calculate_iou(pred_mask, gt_mask)
-        ious_base.append(iou)
-        base_prompt_ious[text_prompt].append(iou)
+    #     iou = calculate_iou(pred_mask, gt_mask)
+    #     ious_base.append(iou)
+    #     base_prompt_ious[text_prompt].append(iou)
         
-        if len(ious_base) % 200 == 0:
-            print(f"\n--- Current Base mIoU (after {len(ious_base)} valid samples) ---")
-            print(f"Overall mIoU: {np.mean(ious_base):.4f}")
-            for p, arr in base_prompt_ious.items():
-                if arr: print(f"  {p}: {np.mean(arr):.4f} ({len(arr)} samples)")
+    #     if len(ious_base) % 200 == 0:
+    #         print(f"\n--- Current Base mIoU (after {len(ious_base)} valid samples) ---")
+    #         print(f"Overall mIoU: {np.mean(ious_base):.4f}")
+    #         for p, arr in base_prompt_ious.items():
+    #             if arr: print(f"  {p}: {np.mean(arr):.4f} ({len(arr)} samples)")
             
-    miou_base = np.mean(ious_base) if ious_base else 0.0
-    print(f"\n--- Final Base Model mIoU ---")
-    print(f"Overall: {miou_base:.4f} (over {len(ious_base)} samples)")
-    for p, arr in base_prompt_ious.items():
-        if arr: print(f"  {p}: {np.mean(arr):.4f} ({len(arr)} samples)")
+    # miou_base = np.mean(ious_base) if ious_base else 0.0
+    # print(f"\n--- Final Base Model mIoU ---")
+    # print(f"Overall: {miou_base:.4f} (over {len(ious_base)} samples)")
+    # for p, arr in base_prompt_ious.items():
+    #     if arr: print(f"  {p}: {np.mean(arr):.4f} ({len(arr)} samples)")
     
-    # Free memory
-    del model_base
-    torch.cuda.empty_cache()
+    # # Free memory
+    # del model_base
+    # torch.cuda.empty_cache()
     
     # 2. Evaluate LoRA Model
     print("\n--- Evaluating LoRA SAM3 Model across Epochs ---")
     
+    # NEW: Set your desired starting epoch here
+    start_epoch = 11
+    print(f"Starting evaluation from epoch {start_epoch}...")
+    
     LORA_YAML_CONFIG = "/workspace/SAM3_train_lora/SAM3_LoRA/configs/open_earth_map_full_lora.yaml"
-    LORA_OUTPUTS_DIR = "/workspace/SAM3_train_lora/SAM3_LoRA/outputs/open_earth_map_full_lora_final"
+    LORA_OUTPUTS_DIR = "/workspace/SAM3_train_lora/SAM3_LoRA/outputs/open_earth_map_full_lora"
     
     print(f"Using config: {LORA_YAML_CONFIG}")
     print(f"Looking for checkpoints in: {LORA_OUTPUTS_DIR}")
@@ -245,6 +249,11 @@ def main():
     
     for ckpt_path in epoch_checkpoints:
         epoch_num = extract_epoch(ckpt_path)
+        
+        # NEW: Skip epochs lower than start_epoch
+        if epoch_num < start_epoch:
+            continue
+            
         print(f"\n--- Evaluating Epoch {epoch_num} ---")
         
         model_lora = build_model(with_lora=True, lora_weights_path=ckpt_path, lora_config=lora_config)
@@ -307,10 +316,22 @@ def main():
     for epoch, miou in epoch_mious.items():
         print(f"{epoch}: mIoU = {miou:.4f}")
         
-    # Save results to a file
+    # NEW: Save results incrementally so previous epochs aren't overwritten
     results_file = os.path.join("SAM3_Testing", "epoch_mious_results_custom.json")
+    os.makedirs(os.path.dirname(results_file), exist_ok=True)
+    
+    if os.path.exists(results_file):
+        try:
+            with open(results_file, 'r') as f:
+                existing_results = json.load(f)
+                existing_results.update(epoch_mious)
+                epoch_mious = existing_results
+        except json.JSONDecodeError:
+            pass # Overwrite if the existing file is corrupted
+            
     with open(results_file, 'w') as f:
         json.dump(epoch_mious, f, indent=4)
+        
     print(f"\nSaved epoch evaluation results to {results_file}")
 
 if __name__ == "__main__":
