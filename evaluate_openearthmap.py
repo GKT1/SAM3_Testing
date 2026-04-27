@@ -8,6 +8,7 @@ from tqdm import tqdm
 import json
 import glob
 import re
+import argparse
 
 # Add SAM3 and SAM3_LoRA to path
 project_root = "/workspace"
@@ -149,13 +150,24 @@ def run_inference(processor, device="cuda", limit=None):
     return label_mious, overall_miou
 
 def main():
+    parser = argparse.ArgumentParser(description="Evaluate OpenEarthMap on SAM3")
+    parser.add_argument("--unseen_classes", nargs="+", default=[], help="List of unseen classes to calculate u-mIoU and h-mIoU")
+    parser.add_argument("--limit", type=int, default=None, help="Limit number of test images")
+    args = parser.parse_args()
+
     device = "cuda" if torch.cuda.is_available() else "cpu"
     print(f"Using device: {device}")
     
     results = {}
 
-    limit_samples = None
+    limit_samples = args.limit
     print(f"Limiting to {limit_samples} samples per model.")
+    if args.unseen_classes:
+        unseen_classes_lower = [c.lower() for c in args.unseen_classes]
+        seen_classes_display = [k for k in COLOR_MAP.keys() if k.lower() not in unseen_classes_lower]
+        unseen_classes_display = [k for k in COLOR_MAP.keys() if k.lower() in unseen_classes_lower]
+        print(f"Configured Seen classes: {seen_classes_display}")
+        print(f"Configured Unseen classes: {unseen_classes_display}")
 
     # 1. Base Model
     # print("\nEvaluating Base Model...")
@@ -182,7 +194,7 @@ def main():
     # torch.cuda.empty_cache()
     
     # 2. LoRA Models
-    start_epoch = 11
+    start_epoch = 6
     print("\nEvaluating LoRA Epochs...")
     lora_model = build_model_with_lora()
     processor = Sam3Processor(lora_model, device=device, confidence_threshold=0.4)
@@ -215,10 +227,38 @@ def main():
             for label, miou in label_mious.items():
                 print(f"  {label}: {miou:.4f}")
                 
-            results[f"epoch_{epoch}"] = {
+            # Compute s-mIoU, u-mIoU, h-mIoU
+            s_miou, u_miou, h_miou = None, None, None
+            
+            if args.unseen_classes:
+                unseen_classes_lower = [c.lower() for c in args.unseen_classes]
+                seen_classes = [k for k in label_mious.keys() if k.lower() not in unseen_classes_lower]
+                unseen_classes = [k for k in label_mious.keys() if k.lower() in unseen_classes_lower]
+                
+                s_miou = np.mean([label_mious[k] for k in seen_classes]) if seen_classes else 0.0
+                u_miou = np.mean([label_mious[k] for k in unseen_classes]) if unseen_classes else 0.0
+                
+                if s_miou + u_miou > 0:
+                    h_miou = (2 * s_miou * u_miou) / (s_miou + u_miou)
+                else:
+                    h_miou = 0.0
+                    
+                print(f"  Seen classes: {seen_classes}")
+                print(f"  Unseen classes: {unseen_classes}")
+                print(f"  Seen mIoU (s-mIoU): {s_miou:.4f}")
+                print(f"  Unseen mIoU (u-mIoU): {u_miou:.4f}")
+                print(f"  Harmonic mIoU (h-mIoU): {h_miou:.4f}")
+
+            epoch_result = {
                 "overall": overall_miou,
                 "labels": label_mious
             }
+            if args.unseen_classes:
+                epoch_result["s_miou"] = s_miou
+                epoch_result["u_miou"] = u_miou
+                epoch_result["h_miou"] = h_miou
+                
+            results[f"epoch_{epoch}"] = epoch_result
             
         except Exception as e:
             print(f"Failed to evaluate epoch {epoch}: {str(e)}")

@@ -216,11 +216,13 @@ def main():
     print("\n--- Evaluating LoRA SAM3 Model across Epochs ---")
     
     # NEW: Set your desired starting epoch here
-    start_epoch = 11
+    start_epoch = 0
     print(f"Starting evaluation from epoch {start_epoch}...")
     
-    LORA_YAML_CONFIG = "/workspace/SAM3_train_lora/SAM3_LoRA/configs/open_earth_map_full_lora.yaml"
-    LORA_OUTPUTS_DIR = "/workspace/SAM3_train_lora/SAM3_LoRA/outputs/open_earth_map_full_lora"
+
+
+    LORA_YAML_CONFIG = "/workspace/SAM3_train_lora/SAM3_LoRA/configs/open_earth_map_full_lora_rank64.yaml"
+    LORA_OUTPUTS_DIR = "/workspace/SAM3_train_lora/SAM3_LoRA/outputs/open_earth_map_full_lora_rank64"
     
     print(f"Using config: {LORA_YAML_CONFIG}")
     print(f"Looking for checkpoints in: {LORA_OUTPUTS_DIR}")
@@ -257,7 +259,7 @@ def main():
         print(f"\n--- Evaluating Epoch {epoch_num} ---")
         
         model_lora = build_model(with_lora=True, lora_weights_path=ckpt_path, lora_config=lora_config)
-        processor_lora = Sam3Processor(model_lora, device=device, confidence_threshold=0.5)
+        processor_lora = Sam3Processor(model_lora, device=device, confidence_threshold=0.4)
         
         ious_lora = []
         lora_prompt_ious = {p: [] for p in PROMPT_TO_FOLDER.keys()}
